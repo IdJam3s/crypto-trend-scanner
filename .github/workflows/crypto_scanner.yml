@@ -1,0 +1,35 @@
+name: Crypto Scanner (Twice Daily)
+
+on:
+  schedule:
+    - cron: "0 1 * * *"    # 1:00 AM UTC
+    - cron: "0 13 * * *"   # 1:00 PM UTC
+  workflow_dispatch:
+
+jobs:
+  run-scanners:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run crypto_4af_4
+        run: |
+          echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_4 ===="
+          python crypto_4af_4.py
+
+      - name: Run crypto_4af_5
+        run: |
+          echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_5 ===="
+          python crypto_4af_5.py
