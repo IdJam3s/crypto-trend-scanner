@@ -34,15 +34,28 @@ def send_professional_email(subject, html_body):
     except Exception as e:
         print(f"Email error: {e}")
 
-# Binance futures (perpetual swaps)
+
+
 BINANCE_FUTURES = ccxt.binance({
     'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
+    'options': {
+        'defaultType': 'swap',  # perpetual swaps
+        'urls': {
+            'api': {
+                'public': 'https://fapi.binance.com/fapi/v1',
+                'private': 'https://fapi.binance.com/fapi/v1',
+            }
+        }
+    }
 })
 
-# Binance spot for fallback
 BINANCE_SPOT = ccxt.binance({
-    'enableRateLimit': True
+    'enableRateLimit': True,
+    'urls': {
+        'api': {
+            'public': 'https://api.binance.com/api/v3',
+        }
+    }
 })
 
 TIMEFRAMES = {
