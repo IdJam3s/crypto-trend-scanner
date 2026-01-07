@@ -1,0 +1,5 @@
+ccxt
+pandas
+pandas_ta_classic
+requests
+tabulate
