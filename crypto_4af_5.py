@@ -13,7 +13,7 @@ import os
 
 warnings.filterwarnings("ignore")
 
-# Email from GitHub secrets
+# Email from GitHub secrets (secure)
 SENDER_EMAIL = os.environ['SENDER_EMAIL']
 SENDER_PASSWORD = os.environ['SENDER_PASSWORD']
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', SENDER_EMAIL)
@@ -36,7 +36,7 @@ def send_professional_email(subject, html_body):
         print(f"Email error: {e}")
 
 # OKX perpetual swaps
-OKX_PERP = ccxt.okx({
+OKX = ccxt.okx({
     'enableRateLimit': True,
     'options': {'defaultType': 'swap'}
 })
@@ -47,10 +47,10 @@ TIMEFRAMES = {
     "4H": "4h"
 }
 
-def get_data(exchange, symbol, tf):
+def get_data(symbol, tf):
     try:
         df = pd.DataFrame(
-            exchange.fetch_ohlcv(symbol, tf, limit=200),
+            OKX.fetch_ohlcv(symbol, tf, limit=200),
             columns=['ts','o','h','l','c','v']
         )
         return df
@@ -58,10 +58,10 @@ def get_data(exchange, symbol, tf):
         print(f"Fetch error {symbol} {tf}: {e}")
         return pd.DataFrame()
 
-# Your exact score_asset function (with all your latest rules)
 def score_asset(df):
-    # Your original scoring logic unchanged
     score = 0
+
+    # === DMI ===
     adx = ta.adx(df['h'], df['l'], df['c'])
     df['adx'], df['plus'], df['minus'] = (
         adx['ADX_14'], adx['DMP_14'], adx['DMN_14']
@@ -77,6 +77,7 @@ def score_asset(df):
     if df['minus'].iloc[-1] < df['minus'].iloc[-2] < df['minus'].iloc[-3]:
         score += 5
 
+    # === RSI ===
     df['rsi'] = ta.rsi(df['c'], 14)
     df['rsi_ma'] = df['rsi'].rolling(14).mean()
     if df['rsi'].iloc[-1] > 50: score += 10
@@ -84,6 +85,7 @@ def score_asset(df):
     if df['rsi'].iloc[-1] > df['rsi_ma'].iloc[-1]: score += 5
     if df['rsi_ma'].iloc[-1] < 55: score += 5
 
+    # === MACD ===
     macd = ta.macd(df['c'])
     df['macd'], df['signal'], df['hist'] = (
         macd['MACD_12_26_9'], macd['MACDs_12_26_9'], macd['MACDh_12_26_9']
@@ -97,45 +99,20 @@ def score_asset(df):
     if df['macd'].iloc[-1] < df['hist'].iloc[-1] and df['macd'].iloc[-1] > -0.5: score += 2
     if (df['hist'].iloc[-1] > df['signal'].iloc[-1]): score += 1
 
-    # Detect crossover: previous bar MACD <= Signal, current bar MACD > Signal
-    cross_above = (df['macd'].shift(1) <= df['signal'].shift(1)) & (df['macd'] > df['signal'])
-
-    # Check different lookback windows (prioritize most recent)
-    if cross_above.iloc[-3:].any():        # Last 3 candles (including current)
-        score += 25
-    elif cross_above.iloc[-5:].any():      # Last 5 candles
-        score += 15
-    elif cross_above.iloc[-7:].any():      # Last 7 candles
-        score += 10
-
     # === ICHIMOKU STRUCTURE ===
     df['ema3'] = ta.ema(df['c'], 3)
     df['ma3'] = ta.sma(df['c'], 3)
     df['ema5'] = ta.ema(df['c'], 5)
     df['ma6'] = ta.sma(df['c'], 6)
-
     df['cl'] = (df['h'].rolling(9).max() + df['l'].rolling(9).min()) / 2
     df['bl'] = (df['h'].rolling(26).max() + df['l'].rolling(26).min()) / 2
-
     cl = df['cl'].iloc[-1]
     bl = df['bl'].iloc[-1]
+    if cl < df['ema3'].iloc[-1]: score += 5
+    if cl > df['ma3'].iloc[-1] or cl > df['ema5'].iloc[-1] or cl > df['ma6'].iloc[-1]: score += 5
+    if bl > df['ma6'].iloc[-1]: score += 5
 
-    # CL below 3EMA
-    if cl < df['ema3'].iloc[-1]:
-        score += 5
-
-    # CL above ANY of (3MA, 5EMA, 6MA)
-    if (
-        cl > df['ma3'].iloc[-1] or
-        cl > df['ema5'].iloc[-1] or
-        cl > df['ma6'].iloc[-1]
-    ):
-        score += 5
-
-    # BL above MA6
-    if bl > df['ma6'].iloc[-1]:
-        score += 5
-
+    # === MOVING AVERAGES ===
     df['ma20'] = ta.sma(df['c'], 20)
     df['ma33'] = ta.sma(df['c'], 33)
     if df['ma20'].iloc[-1] > df['ma20'].iloc[-2]: score += 5
@@ -145,23 +122,10 @@ def score_asset(df):
 
 def run_scan():
     print(f"\n{'='*100}")
-    print(f" JAMES' BYBIT LINEAR PERPETUAL LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
+    print(f" JAMES' OKX FULL-MARKET LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
     print(f"{'='*100}\n")
 
-    # Direct fetch of linear perpetuals only — no spot call, no block
-    try:
-        response = BYBIT_PERP.public_get_v5_market_instruments_info({'category': 'linear'})
-        if response['retCode'] != 0:
-            raise Exception(response['retMsg'])
-        perp_list = response['result']['list']
-        print(f"Successfully loaded {len(perp_list)} linear perpetual pairs")
-    except Exception as e:
-        print(f"Failed to load markets: {e}")
-        error_html = f"<h1 style='text-align:center; color:red;'>Error loading markets: {e}</h1>"
-        return error_html
-
-    # Filter only active trading pairs
-    active_pairs = [item['symbol'] for item in perp_list if item['status'] == 'Trading']
+    markets = OKX.load_markets()
 
     html = f"""
     <html>
@@ -179,22 +143,25 @@ def run_scan():
     </style>
     </head>
     <body>
-    <h1>James' Bybit Linear Perpetual Long-Trend Scanner</h1>
+    <h1>James' OKX Full-Market Long-Trend Scanner</h1>
     <p style="text-align:center;"><strong>Report Generated:</strong> {datetime.now():%B %d, %Y · %I:%M %p}</p>
-    <p style="text-align:center;">Top 10 assets per timeframe (Bybit USDT Perpetual Swaps)</p>
-    <h2>USDT-Denominated Markets</h2>
+    <p style="text-align:center;">Top 10 assets per timeframe (OKX Perpetual Swaps)</p>
+    <h2>USDT & USD Perpetual Markets</h2>
     """
+
+    # Filter active perpetual swaps
+    quote_symbols = [s for s in markets if markets[s]['active'] and markets[s]['swap']]
 
     for label, tf in TIMEFRAMES.items():
         rankings = []
-        for symbol in active_pairs:
+        for symbol in quote_symbols:
             try:
-                df = get_data(BYBIT_PERP, symbol, tf)
+                df = get_data(symbol, tf)
                 if len(df) < 60:
                     continue
                 score = score_asset(df)
                 rankings.append([
-                    symbol + " (Perp)",
+                    symbol.replace('-SWAP', ' (Perp)'),
                     score,
                     f"{df['c'].iloc[-1]:.8f}"
                 ])
@@ -215,7 +182,7 @@ def run_scan():
             df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
             html += df_top.to_html(index=False, border=0)
         else:
-            html += "<p style='text-align:center;'>No qualifying assets for this timeframe.</p>"
+            html += "<p style='text-align:center;'>No qualifying assets.</p>"
 
     html += """
     <div class="footer">
