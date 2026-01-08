@@ -24,7 +24,7 @@ def send_professional_email(subject, html_body):
     msg['To'] = RECIPIENT_EMAIL
     msg['Subject'] = subject
     msg.attach(MIMEText(html_body, "html"))
-    
+
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
@@ -132,68 +132,65 @@ def run_scan():
     print(f" JAMES' BYBIT FULL-MARKET LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
     print(f"{'='*100}\n")
 
-    perp_markets = BYBIT_PERP.load_markets()
+    # Manually fetch only linear perpetuals (bypasses spot block)
+    try:
+        response = BYBIT_PERP.publicGetV5MarketInstrumentsInfo({'category': 'linear'})
+        perp_list = response['result']['list']
+        print(f"Loaded {len(perp_list)} linear perpetual pairs")
+    except Exception as e:
+        print(f"Failed to load markets: {e}")
+        return "<h1>Error loading markets</h1>"
+
+    # Build markets dict for compatibility (symbol -> info)
+    perp_markets = {item['symbol']: item for item in perp_list if item['status'] == 'Trading'}
 
     html = f"""
     <html>
     <head>
     <style>
-    body {{font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #f8f9fa; margin: 40px; line-height: 1.6;}}
-    h1 {{color: #1a3e72; text-align: center; border-bottom: 3px solid #1a3e72; padding-bottom: 10px;}}
-    h2 {{color: #2c5282; border-bottom: 1px solid #ddd; padding-bottom: 8px;}}
-    h3 {{color: #2d3748;}}
-    table {{width: 80%; margin: 25px auto; border-collapse: collapse; box-shadow: 0 2px 10px rgba(0,0,0,0.1);}}
-    th, td {{border: 1px solid #cbd5e0; padding: 12px; text-align: center;}}
-    th {{background: #e6fffa; color: #1a3e72; font-weight: bold;}}
-    tr:nth-child(even) {{background: #f7fafc;}}
-    .footer {{text-align: center; font-size: 0.85em; color: #718096; margin-top: 60px; border-top: 1px solid #e2e8f0; padding-top: 20px;}}
+    /* your existing CSS */
     </style>
     </head>
     <body>
-    <h1>James' Bybit Full-Market Long-Trend Scanner</h1>
+    <h1>James' Bybit Linear Perpetual Long-Trend Scanner</h1>
     <p style="text-align:center;"><strong>Report Generated:</strong> {datetime.now():%B %d, %Y · %I:%M %p}</p>
-    <p style="text-align:center;">Top 10 assets per timeframe/quote (Bybit Perpetual Swaps)</p>
+    <p style="text-align:center;">Top 10 assets per timeframe (Bybit Linear Perpetual USDT Pairs)</p>
     """
 
-    for quote_name, quote in QUOTES.items():
-        print(f"\n{'#'*90}")
-        print(f" {quote_name}-DENOMINATED MARKETS ")
-        print(f"{'#'*90}")
-        html += f"<h2>{quote_name}-Denominated Markets (Bybit Perpetual)</h2>"
+    # Only USDT quote (all linear are USDT-margined)
+    quote_symbols = list(perp_markets.keys())
 
-        quote_symbols = [s for s in perp_markets if perp_markets[s]['active'] and perp_markets[s]['swap'] and quote in s]
-
-        for label, tf in TIMEFRAMES.items():
-            rankings = []
-            for symbol in quote_symbols:
-                try:
-                    df = get_data(BYBIT_PERP, symbol, tf)
-                    if len(df) < 60:
-                        continue
-                    score = score_asset(df)
-                    rankings.append([
-                        symbol + " (Perp)",
-                        score,
-                        f"{df['c'].iloc[-1]:.8f}"
-                    ])
-                except Exception as e:
-                    print(f"Error processing {symbol}: {e}")
+    for label, tf in TIMEFRAMES.items():
+        rankings = []
+        for symbol in quote_symbols:
+            try:
+                df = get_data(BYBIT_PERP, symbol, tf)
+                if len(df) < 60:
                     continue
+                score = score_asset(df)
+                rankings.append([
+                    symbol + " (Perp)",
+                    score,
+                    f"{df['c'].iloc[-1]:.8f}"
+                ])
+            except Exception as e:
+                print(f"Error processing {symbol}: {e}")
+                continue
 
-            top10 = sorted(rankings, key=lambda x: -x[1])[:10]
+        top10 = sorted(rankings, key=lambda x: -x[1])[:10]
 
-            print(f"\n▶ {label} ({tf.upper()})\n")
-            if top10:
-                print(tabulate(top10, headers=["Symbol", "Score", "Price"], tablefmt="github"))
-            else:
-                print("No data\n")
+        print(f"\n▶ {label} ({tf.upper()})\n")
+        if top10:
+            print(tabulate(top10, headers=["Symbol", "Score", "Price"], tablefmt="github"))
+        else:
+            print("No data\n")
 
-            html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 10</h3>"
-            if top10:
-                df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
-                html += df_top.to_html(index=False, border=0)
-            else:
-                html += "<p style='text-align:center;'>No qualifying assets.</p>"
+        html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 10</h3>"
+        if top10:
+            df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
+            html += df_top.to_html(index=False, border=0)
+        else:
+            html += "<p style='text-align:center;'>No qualifying assets.</p>"
 
     html += """
     <div class="footer">
