@@ -24,7 +24,7 @@ def send_professional_email(subject, html_body):
     msg['To'] = RECIPIENT_EMAIL
     msg['Subject'] = subject
     msg.attach(MIMEText(html_body, "html"))
-
+    
     try:
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
@@ -35,17 +35,11 @@ def send_professional_email(subject, html_body):
     except Exception as e:
         print(f"Email error: {e}")
 
-# Bybit perpetual swaps
+# Bybit perpetual swaps only
 BYBIT_PERP = ccxt.bybit({
     'enableRateLimit': True,
     'options': {'defaultType': 'swap'}
 })
-
-# Bybit spot for fallback
-#BYBIT_SPOT = ccxt.bybit({
-#    'enableRateLimit': True,
-#    'options': {'defaultType': 'spot'}
-#})
 
 TIMEFRAMES = {
     "Weekly": "1w",
@@ -58,7 +52,7 @@ QUOTES = {
     "BTC": "BTC"
 }
 
-include_spot_fallback = False  # Set False if you want perpetuals only
+include_spot_fallback = False  # Disabled to avoid CloudFront blocks
 
 def get_data(exchange, symbol, tf):
     try:
@@ -119,25 +113,11 @@ def score_asset(df):
     df['ma6'] = ta.sma(df['c'], 6)
     df['cl'] = (df['h'].rolling(9).max() + df['l'].rolling(9).min()) / 2
     df['bl'] = (df['h'].rolling(26).max() + df['l'].rolling(26).min()) / 2
-
     cl = df['cl'].iloc[-1]
     bl = df['bl'].iloc[-1]
-
-    # CL below 3EMA
-    if cl < df['ema3'].iloc[-1]:
-        score += 5
-
-    # CL above ANY of (3MA, 5EMA, 6MA)
-    if (
-        cl > df['ma3'].iloc[-1] or
-        cl > df['ema5'].iloc[-1] or
-        cl > df['ma6'].iloc[-1]
-    ):
-        score += 5
-
-    # BL above MA6
-    if bl > df['ma6'].iloc[-1]:
-        score += 5
+    if cl < df['ema3'].iloc[-1]: score += 5
+    if cl > df['ma3'].iloc[-1] or cl > df['ema5'].iloc[-1] or cl > df['ma6'].iloc[-1]: score += 5
+    if bl > df['ma6'].iloc[-1]: score += 5
 
     # === MOVING AVERAGES ===
     df['ma20'] = ta.sma(df['c'], 20)
@@ -172,25 +152,24 @@ def run_scan():
     <body>
     <h1>James' Bybit Full-Market Long-Trend Scanner</h1>
     <p style="text-align:center;"><strong>Report Generated:</strong> {datetime.now():%B %d, %Y · %I:%M %p}</p>
-    <p style="text-align:center;">Top 5 assets per timeframe/quote (Bybit Perpetual Swaps + Spot fallback)</p>
+    <p style="text-align:center;">Top 10 assets per timeframe/quote (Bybit Perpetual Swaps)</p>
     """
 
     for quote_name, quote in QUOTES.items():
         print(f"\n{'#'*90}")
         print(f" {quote_name}-DENOMINATED MARKETS ")
         print(f"{'#'*90}")
-        html += f"<h2>{quote_name}-Denominated Markets (Bybit)</h2>"
+        html += f"<h2>{quote_name}-Denominated Markets (Bybit Perpetual)</h2>"
 
         quote_symbols = [s for s in perp_markets if perp_markets[s]['active'] and perp_markets[s]['swap'] and quote in s]
 
-                for label, tf in TIMEFRAMES.items():
+        for label, tf in TIMEFRAMES.items():
             rankings = []
             for symbol in quote_symbols:
                 try:
                     df = get_data(BYBIT_PERP, symbol, tf)
                     if len(df) < 60:
-                        continue  # skip if insufficient data
-
+                        continue
                     score = score_asset(df)
                     rankings.append([
                         symbol + " (Perp)",
@@ -209,7 +188,7 @@ def run_scan():
             else:
                 print("No data\n")
 
-            html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 5</h3>"
+            html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 10</h3>"
             if top10:
                 df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
                 html += df_top.to_html(index=False, border=0)
