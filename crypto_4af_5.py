@@ -42,10 +42,10 @@ BYBIT_PERP = ccxt.bybit({
 })
 
 # Bybit spot for fallback
-BYBIT_SPOT = ccxt.bybit({
-    'enableRateLimit': True,
-    'options': {'defaultType': 'spot'}
-})
+#BYBIT_SPOT = ccxt.bybit({
+#    'enableRateLimit': True,
+#    'options': {'defaultType': 'spot'}
+#})
 
 TIMEFRAMES = {
     "Weekly": "1w",
@@ -58,7 +58,7 @@ QUOTES = {
     "BTC": "BTC"
 }
 
-include_spot_fallback = True  # Set False if you want perpetuals only
+include_spot_fallback = False  # Set False if you want perpetuals only
 
 def get_data(exchange, symbol, tf):
     try:
@@ -183,27 +183,17 @@ def run_scan():
 
         quote_symbols = [s for s in perp_markets if perp_markets[s]['active'] and perp_markets[s]['swap'] and quote in s]
 
-        for label, tf in TIMEFRAMES.items():
+                for label, tf in TIMEFRAMES.items():
             rankings = []
             for symbol in quote_symbols:
                 try:
                     df = get_data(BYBIT_PERP, symbol, tf)
                     if len(df) < 60:
-                        if include_spot_fallback:
-                            # Bybit spot symbols are usually the same as perp (e.g., BTCUSDT)
-                            spot_symbol = symbol
-                            df = get_data(BYBIT_SPOT, spot_symbol, tf)
-                            if len(df) < 60:
-                                continue
-                            symbol_type = "(Spot)"
-                        else:
-                            continue
-                    else:
-                        symbol_type = "(Perp)"
+                        continue  # skip if insufficient data
 
                     score = score_asset(df)
                     rankings.append([
-                        symbol + f" {symbol_type}",
+                        symbol + " (Perp)",
                         score,
                         f"{df['c'].iloc[-1]:.8f}"
                     ])
