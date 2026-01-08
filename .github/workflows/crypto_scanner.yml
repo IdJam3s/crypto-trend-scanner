@@ -3,7 +3,10 @@ name: Crypto Scanner (Twice Daily)
 on:
   schedule:
     - cron: '0 1 * * *'   # 1:00 AM UTC
+    - cron: '0 10 * * *'   # 1:00 AM UTC
     - cron: '0 13 * * *'  # 1:00 PM UTC
+    - cron: '0 16 * * *'  # 1:00 PM UTC
+    - cron: '0 19 * * *'  # 1:00 PM UTC
   workflow_dispatch:      # Allows manual runs
 
 jobs:
