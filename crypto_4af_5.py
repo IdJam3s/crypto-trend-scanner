@@ -132,37 +132,48 @@ def run_scan():
     print(f" JAMES' BYBIT FULL-MARKET LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
     print(f"{'='*100}\n")
 
-    # Manually fetch only linear perpetuals (bypasses spot block)
+    # Direct fetch of linear perpetuals only — bypasses spot block
     try:
-        response = BYBIT_PERP.publicGetV5MarketInstrumentsInfo({'category': 'linear'})
+        response = BYBIT_PERP.public_get_v5_market_instruments_info({'category': 'linear'})
+        if response['retCode'] != 0:
+            raise Exception(response['retMsg'])
         perp_list = response['result']['list']
-        print(f"Loaded {len(perp_list)} linear perpetual pairs")
+        print(f"Successfully loaded {len(perp_list)} linear perpetual pairs")
     except Exception as e:
         print(f"Failed to load markets: {e}")
-        return "<h1>Error loading markets</h1>"
+        html_error = f"<h1>Error loading markets: {e}</h1>"
+        return html_error
 
-    # Build markets dict for compatibility (symbol -> info)
+    # Filter active trading pairs
     perp_markets = {item['symbol']: item for item in perp_list if item['status'] == 'Trading'}
 
     html = f"""
     <html>
     <head>
     <style>
-    /* your existing CSS */
+    body {{font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #f8f9fa; margin: 40px; line-height: 1.6;}}
+    h1 {{color: #1a3e72; text-align: center; border-bottom: 3px solid #1a3e72; padding-bottom: 10px;}}
+    h2 {{color: #2c5282;}}
+    h3 {{color: #2d3748;}}
+    table {{width: 80%; margin: 25px auto; border-collapse: collapse; box-shadow: 0 2px 10px rgba(0,0,0,0.1);}}
+    th, td {{border: 1px solid #cbd5e0; padding: 12px; text-align: center;}}
+    th {{background: #e6fffa; color: #1a3e72; font-weight: bold;}}
+    tr:nth-child(even) {{background: #f7fafc;}}
+    .footer {{text-align: center; font-size: 0.85em; color: #718096; margin-top: 60px; border-top: 1px solid #e2e8f0; padding-top: 20px;}}
     </style>
     </head>
     <body>
     <h1>James' Bybit Linear Perpetual Long-Trend Scanner</h1>
     <p style="text-align:center;"><strong>Report Generated:</strong> {datetime.now():%B %d, %Y · %I:%M %p}</p>
-    <p style="text-align:center;">Top 10 assets per timeframe (Bybit Linear Perpetual USDT Pairs)</p>
+    <p style="text-align:center;">Top 10 assets per timeframe (Bybit USDT Perpetual Swaps)</p>
+    <h2>USDT-Denominated Markets</h2>
     """
 
-    # Only USDT quote (all linear are USDT-margined)
-    quote_symbols = list(perp_markets.keys())
+    symbols = list(perp_markets.keys())
 
     for label, tf in TIMEFRAMES.items():
         rankings = []
-        for symbol in quote_symbols:
+        for symbol in symbols:
             try:
                 df = get_data(BYBIT_PERP, symbol, tf)
                 if len(df) < 60:
@@ -206,3 +217,4 @@ if __name__ == "__main__":
     html_body = run_scan()
     subject = f"Bybit Full-Market Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
     send_professional_email(subject, html_body)
+
