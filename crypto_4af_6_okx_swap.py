@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from okx import Market
+import okx.MarketData as MarketData
 import pandas as pd
 import pandas_ta_classic as ta  # Modern fork of pandas_ta_classic
 from tabulate import tabulate
@@ -33,7 +33,7 @@ def send_professional_email(subject, html_body):
         print(f"Email error: {e}")
 
 # Initialize OKX Market API (no auth needed for public data)
-market_api = Market.MarketAPI(flag="0")  # "0" = live
+market_api = MarketData.MarketAPI(flag="0")
 
 TIMEFRAMES = {
     "Weekly": "1W",
