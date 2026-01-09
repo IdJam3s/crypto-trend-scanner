@@ -1,3 +1,4 @@
+ccxt
 python-okx
 pandas
 pandas_ta_classic
