@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import okx.Market as Market
+from okx import Market
 import pandas as pd
 import pandas_ta_classic as ta  # Modern fork of pandas_ta_classic
 from tabulate import tabulate
