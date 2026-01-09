@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import okx.MarketData as MarketData
+import okx.PublicData as PublicData
 import pandas as pd
 import pandas_ta_classic as ta  # Modern fork of pandas_ta_classic
 from tabulate import tabulate
@@ -33,7 +33,7 @@ def send_professional_email(subject, html_body):
         print(f"Email error: {e}")
 
 # Initialize OKX Market API (no auth needed for public data)
-market_api = MarketData.MarketAPI(flag="0")
+public_api = PublicData.PublicAPI(flag="0")  # flag="0" = live
 
 TIMEFRAMES = {
     "Weekly": "1W",
@@ -128,7 +128,7 @@ def run_scan():
     print(f"{'='*100}\n")
 
     # Fetch all active perpetual swaps
-    result = market_api.get_instruments(instType="SWAP")
+    result = public_api.get_instruments(instType="SWAP")
     if result["code"] != "0":
         print("Error fetching instruments:", result["msg"])
         return ""
@@ -214,5 +214,5 @@ def run_scan():
 
 if __name__ == "__main__":
     html_body = run_scan()
-    subject = f"OKX Full-Market Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
+    subject = f"OKX Full-Market SWAP Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
     send_professional_email(subject, html_body)
