@@ -1,12 +1,11 @@
 name: Crypto Scanner (Twice Daily)
-
 on:
   schedule:
-    - cron: '0 0 * * *'   # 1:00 AM UTC
-    - cron: '0 9 * * *'   # 1:00 AM UTC
-    - cron: '0 12 * * *'  # 1:00 PM UTC
-    - cron: '0 15 * * *'  # 1:00 PM UTC
-    - cron: '0 18 * * *'  # 1:00 PM UTC
+    - cron: '0 0 * * *'   # 00:00 UTC
+    - cron: '0 9 * * *'   # 09:00 UTC
+    - cron: '0 12 * * *'  # 12:00 UTC
+    - cron: '0 15 * * *'  # 15:00 UTC
+    - cron: '0 18 * * *'  # 18:00 UTC
   workflow_dispatch:      # Allows manual runs
 
 jobs:
@@ -24,23 +23,26 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ccxt pandas pandas_ta_classic requests tabulate
+          pip install ccxt pandas pandas_ta_classic python-okx tabulate
+          # Removed 'requests' — unused in current scripts
 
-      # Old script (disabled as requested)
       # - name: Run crypto_4af_4 (disabled)
-      #   env:
-      #     SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-      #     SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-      #     RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-      #   run: |
-      #     echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_4 ===="
-      #     python crypto_4af_4.py
+      #   ... (keep commented as-is)
 
-      - name: Run crypto_4af_5 (Bybit full-market)
+      - name: Run crypto_4af_5 (OKX perps - ccxt version)
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: |
-          echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_5 ===="
+          echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_5 (OKX ccxt) ===="
           python crypto_4af_5.py
+
+      - name: Run crypto_4af_6 (OKX USDT + BTC-margined perps - official SDK)
+        env:
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          echo "==== $(date -u '+%Y-%m-%d %H:%M:%S UTC') | crypto_4af_6 (OKX official) ===="
+          python crypto_4af_6_okx_swap.py
