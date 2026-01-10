@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import ccxt
 import pandas as pd
 import pandas_ta_classic as ta
 from tabulate import tabulate
@@ -9,19 +10,13 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
-import time  # For rate limiting
-
-from python_okx import PublicData
 
 warnings.filterwarnings("ignore")
 
-# Email from GitHub secrets
+# Email from GitHub secrets (secure)
 SENDER_EMAIL = os.environ['SENDER_EMAIL']
 SENDER_PASSWORD = os.environ['SENDER_PASSWORD']
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', SENDER_EMAIL)
-
-# Initialize OKX Public API (live mode)
-public_data_api = PublicData.PublicAPI(flag="0")  # "0" = production
 
 def send_professional_email(subject, html_body):
     msg = MIMEMultipart("alternative")
@@ -40,37 +35,27 @@ def send_professional_email(subject, html_body):
     except Exception as e:
         print(f"Email error: {e}")
 
+# OKX perpetual swaps
+OKX = ccxt.okx({
+    'enableRateLimit': True,
+    'options': {'defaultType': 'swap'}
+})
+
 TIMEFRAMES = {
     "Weekly": "1w",
     "Daily": "1d",
     "4H": "4h"
 }
 
-def get_data(inst_id, tf):
+def get_data(symbol, tf):
     try:
-        okx_tf = tf.upper()  # OKX uses '1W', '1D', '4H'
-        result = public_data_api.get_candlesticks(
-            instId=inst_id,
-            bar=okx_tf,
-            limit="200"
+        df = pd.DataFrame(
+            OKX.fetch_ohlcv(symbol, tf, limit=200),
+            columns=['ts','o','h','l','c','v']
         )
-        if result["code"] != "0":
-            print(f"Candle fetch error for {inst_id} ({tf}): {result['msg']}")
-            return pd.DataFrame()
-
-        data = result["data"]
-        if not data:
-            print(f"No candle data for {inst_id} ({tf})")
-            return pd.DataFrame()
-
-        df = pd.DataFrame(data, columns=['ts', 'o', 'h', 'l', 'c', 'vol', 'volCcy'])
-        df = df[['ts', 'o', 'h', 'l', 'c', 'vol']]
-        df = df.astype(float)
-        df['ts'] = pd.to_datetime(df['ts'], unit='ms')
-
         return df
     except Exception as e:
-        print(f"Fetch error {inst_id} {tf}: {e}")
+        print(f"Fetch error {symbol} {tf}: {e}")
         return pd.DataFrame()
 
 def score_asset(df):
@@ -100,7 +85,7 @@ def score_asset(df):
     if df['rsi'].iloc[-1] > df['rsi_ma'].iloc[-1]: score += 5
     if df['rsi_ma'].iloc[-1] < 55: score += 5
 
-    # === MACD === (your updated version with bonuses)
+    # === MACD ===
     macd = ta.macd(df['c'])
     df['macd'], df['signal'], df['hist'] = (
         macd['MACD_12_26_9'], macd['MACDs_12_26_9'], macd['MACDh_12_26_9']
@@ -113,7 +98,6 @@ def score_asset(df):
     if df['macd'].iloc[-1] < df['hist'].iloc[-1] and df['macd'].iloc[-1] > 0: score += 3
     if df['macd'].iloc[-1] < df['hist'].iloc[-1] and df['macd'].iloc[-1] > -0.5: score += 2
     if (df['hist'].iloc[-1] > df['signal'].iloc[-1]): score += 1
-
     # NEW: Tiered bonus for recent bullish MACD crossover
     cross_above = (df['macd'].shift(1) <= df['signal'].shift(1)) & (df['macd'] > df['signal'])
     if cross_above.iloc[-3:].any():
@@ -149,6 +133,8 @@ def run_scan():
     print(f" JAMES' OKX FULL-MARKET LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
     print(f"{'='*100}\n")
 
+    markets = OKX.load_markets()
+
     html = f"""
     <html>
     <head>
@@ -167,55 +153,32 @@ def run_scan():
     <body>
     <h1>James' OKX Full-Market Long-Trend Scanner</h1>
     <p style="text-align:center;"><strong>Report Generated:</strong> {datetime.now():%B %d, %Y · %I:%M %p}</p>
-    <p style="text-align:center;">Top 10 assets per timeframe (All OKX Perpetual Swaps - USDT & BTC-Margined + BTC-Spot)</p>
+    <p style="text-align:center;">Top 10 assets per timeframe (OKX Perpetual Swaps)</p>
+    <h2>USDT & USD Perpetual Markets</h2>
     """
 
-    # Fetch and filter instruments
-    symbols = []
-    swap_result = public_data_api.get_instruments(instType="SWAP")
-    if swap_result["code"] != "0":
-        print("SWAP fetch error:", swap_result["msg"])
-        return ""
-
-    for instr in swap_result["data"]:
-        if instr["state"] != "live":
-            continue
-        inst_id = instr["instId"]
-        settle_ccy = instr.get("settleCcy", "").upper()
-        if "-USDT-SWAP" in inst_id:
-            symbols.append((inst_id, "Perp USDT"))
-        elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":
-            symbols.append((inst_id, "Perp BTC"))
-
-    # Optional BTC-Spot fallback
-    spot_result = public_data_api.get_instruments(instType="SPOT")
-    if spot_result["code"] == "0":
-        for instr in spot_result["data"]:
-            if instr["state"] == "live" and instr.get("quoteCcy", "").upper() == "BTC":
-                symbols.append((instr["instId"], "Spot BTC"))
-
-    print(f"Total symbols to scan (Perps + BTC-quoted Spot): {len(symbols)}")
+    # Filter active perpetual swaps
+    quote_symbols = [s for s in markets if markets[s]['active'] and markets[s]['swap']]
 
     for label, tf in TIMEFRAMES.items():
         rankings = []
-        for inst_id, market_type in symbols:
+        for symbol in quote_symbols:
             try:
-                df = get_data(inst_id, tf)
-                time.sleep(0.05)  # Rate limit safety
+                df = get_data(symbol, tf)
                 if len(df) < 60:
                     continue
                 score = score_asset(df)
-                display_symbol = inst_id.replace('-SWAP', f' {market_type}').replace('-BTC', f' {market_type}')
                 rankings.append([
-                    display_symbol,
+                    symbol.replace('-SWAP', ' (Perp)'),
                     score,
                     f"{df['c'].iloc[-1]:.8f}"
                 ])
             except Exception as e:
-                print(f"Error processing {inst_id} ({market_type}): {e}")
+                print(f"Error processing {symbol}: {e}")
                 continue
 
         top10 = sorted(rankings, key=lambda x: -x[1])[:10]
+
         print(f"\n▶ {label} ({tf.upper()})\n")
         if top10:
             print(tabulate(top10, headers=["Symbol", "Score", "Price"], tablefmt="github"))
@@ -237,26 +200,10 @@ def run_scan():
     </body></html>
     """
 
-    print("HTML generation completed, length:", len(html))
     return html
 
 if __name__ == "__main__":
-    try:
-        html_body = run_scan()
-        if not html_body:
-            print("Warning: html_body is empty - no email sent")
-        else:
-            subject = f"OKX Perps + BTC-Spot Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
-            send_professional_email(subject, html_body)
-    except Exception as e:
-        timestamped_message = f"[{datetime.now():%Y-%m-%d %H:%M:%S UTC}] Script failed: {e}"
-        print(timestamped_message)
-        error_body = f"<p><strong>Error occurred:</strong> {timestamped_message}</p>"
-        send_professional_email("OKX Scanner Error Alert", error_body)
-
-
-#if __name__ == "__main__":
- #   html_body = run_scan()
-  #  subject = f"OKX Full-Market Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
-   # send_professional_email(subject, html_body)
+    html_body = run_scan()
+    subject = f"OKX Full-Market Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
+    send_professional_email(subject, html_body)
 
