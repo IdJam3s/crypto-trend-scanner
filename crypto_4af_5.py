@@ -98,6 +98,14 @@ def score_asset(df):
     if df['macd'].iloc[-1] < df['hist'].iloc[-1] and df['macd'].iloc[-1] > 0: score += 3
     if df['macd'].iloc[-1] < df['hist'].iloc[-1] and df['macd'].iloc[-1] > -0.5: score += 2
     if (df['hist'].iloc[-1] > df['signal'].iloc[-1]): score += 1
+    # NEW: Tiered bonus for recent bullish MACD crossover
+    cross_above = (df['macd'].shift(1) <= df['signal'].shift(1)) & (df['macd'] > df['signal'])
+    if cross_above.iloc[-3:].any():
+        score += 25
+    elif cross_above.iloc[-5:].any():
+        score += 15
+    elif cross_above.iloc[-7:].any():
+        score += 10
 
     # === ICHIMOKU STRUCTURE ===
     df['ema3'] = ta.ema(df['c'], 3)
