@@ -180,7 +180,8 @@ def run_scan():
         elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":
             symbols.append((inst_id, "Perp BTC"))
 
-    print(f"Filtered active perpetuals (USDT-margined + BTC-margined only): {len(perpetual_symbols)}")
+    #print(f"Filtered active perpetuals (USDT-margined + BTC-margined only): {len(perpetual_symbols)}")
+    print(f"Total symbols to scan (Perps + BTC-quoted Spot): {len(symbols)}")
 
     html = f"""
     <html>
@@ -253,4 +254,3 @@ if __name__ == "__main__":
     html_body = run_scan()
     subject = f"OKX Perps + BTC-Spot Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
     send_professional_email(subject, html_body)
-
