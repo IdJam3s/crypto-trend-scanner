@@ -14,6 +14,10 @@ import time
 
 warnings.filterwarnings("ignore")
 
+# <--- PLACE THE CLIENTS HERE --->
+public_data_api = PublicData.PublicAPI(flag="0")
+market_data_api = MarketData.MarketAPI(flag="0")
+
 # Email setup (unchanged)
 SENDER_EMAIL = os.environ['SENDER_EMAIL']
 SENDER_PASSWORD = os.environ['SENDER_PASSWORD']
