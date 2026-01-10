@@ -43,7 +43,7 @@ def get_data(inst_id, tf):
         if response["code"] != "0":
             print(f"Fetch error {inst_id} {tf}: {response['msg']}")
             return pd.DataFrame()
-        
+
         data = response["data"]
         df = pd.DataFrame(data, columns=['ts', 'o', 'h', 'l', 'c', 'v', 'volCcy', 'volCcyQuote', 'confirm'])
         df = df.astype(float)
@@ -122,11 +122,11 @@ def run_scan():
     print(f"\n{'='*100}")
     print(f" JAMES' OKX FULL-MARKET + BTC-SPOT LONG-TREND SCANNER ({datetime.now():%b %d, %Y · %I:%M %p})")
     print(f"{'='*100}\n")
-    
+
     # Fetch instruments using PublicData if needed, but for simplicity use MarketData if it supports
     # (fallback: keep PublicData for instruments if MarketData doesn't have it)
     # ── Fetch SWAP (perpetuals) ──
-    swap_result = public_data_api.get_instruments(instType="SWAP")   # ← use public_data_api here    
+    swap_result = public_data_api.get_instruments(instType="SWAP")   # ← use public_data_api here
     if swap_result["code"] != "0":
         print("SWAP fetch error:", swap_result["msg"])
         return ""
@@ -140,42 +140,45 @@ def run_scan():
         spot_instruments = []  # fallback to empty list if failed
     else:
         spot_instruments = spot_result["data"]
-    
+
     # ── Now filter both ──
     symbols = []  # or your existing list name
-    
+
     # Filter SWAP (USDT-margined + BTC-margined inverse)
     for instr in swap_instruments:
         if instr["state"] != "live":
             continue
         inst_id = instr["instId"]
         settle_ccy = instr.get("settleCcy", "").upper()
-        
+
         if "-USDT-SWAP" in inst_id:
             symbols.append((inst_id, "Perp USDT"))
         elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":
             symbols.append((inst_id, "Perp BTC"))
-    
+
     # Filter SPOT (only BTC-quoted pairs)
     for instr in spot_instruments:
         if instr["state"] == "live" and instr.get("quoteCcy", "").upper() == "BTC":
             inst_id = instr["instId"]  # e.g., SOL-BTC
             symbols.append((inst_id, "Spot BTC"))
-    
+
     print(f"Total symbols to scan (Perps + BTC-quoted Spot): {len(symbols)}")
 
     # Filter: ONLY USDT-margined (all) + BTC-margined inverse (BTC only)
-    perpetual_symbols = []
-    for instr in all_instruments:
+        # ── Filter & combine ──
+    symbols = []  # ← Changed from perpetual_symbols to symbols (more accurate now)
+
+    # Filter SWAP (USDT-margined + BTC-margined inverse)
+    for instr in swap_instruments:  # ← This line is correct (you already changed to swap_instruments)
         if instr["state"] != "live":
             continue
         inst_id = instr["instId"]
         settle_ccy = instr.get("settleCcy", "").upper()
 
-        if "-USDT-SWAP" in inst_id:                    # All USDT-margined
-            perpetual_symbols.append(inst_id)
-        elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":  # Only BTC-margined inverse
-            perpetual_symbols.append(inst_id)
+        if "-USDT-SWAP" in inst_id:
+            symbols.append((inst_id, "Perp USDT"))     # ← Changed: append tuple instead of just inst_id
+        elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":
+            symbols.append((inst_id, "Perp BTC"))
 
     print(f"Filtered active perpetuals (USDT-margined + BTC-margined only): {len(perpetual_symbols)}")
 
@@ -210,10 +213,10 @@ def run_scan():
                 if len(df) < 60:
                     continue
                 score = score_asset(df)
-                
+
                 # Improved display name: shows market type clearly
                 display_symbol = inst_id.replace('-SWAP', f' {market_type}').replace('-BTC', f' {market_type}')
-                
+
                 rankings.append([
                     display_symbol,
                     score,
@@ -222,21 +225,21 @@ def run_scan():
             except Exception as e:
                 print(f"Error processing {inst_id} ({market_type}): {e}")
                 continue
-        
+
         top10 = sorted(rankings, key=lambda x: -x[1])[:10]
         print(f"\n▶ {label} ({tf.upper()})\n")
         if top10:
             print(tabulate(top10, headers=["Symbol", "Score", "Price"], tablefmt="github"))
         else:
             print("No data\n")
-        
+
         html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 10</h3>"
         if top10:
             df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
             html += df_top.to_html(index=False, border=0)
         else:
             html += "<p style='text-align:center;'>No qualifying assets.</p>"
-    
+
     html += """
     <div class="footer">
     <p><strong>Disclaimer:</strong> For informational purposes only. Not financial advice.</p>
@@ -250,3 +253,4 @@ if __name__ == "__main__":
     html_body = run_scan()
     subject = f"OKX Perps + BTC-Spot Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
     send_professional_email(subject, html_body)
+
