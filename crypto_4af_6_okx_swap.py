@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import okx.MarketData as MarketData  # ← Correct for get_candlesticks
+import okx.PublicData as PublicData
+import okx.MarketData as MarketData # ← Correct for get_candlesticks
 import pandas as pd
 import pandas_ta_classic as ta
 from tabulate import tabulate
@@ -23,7 +24,8 @@ def send_professional_email(subject, html_body):
     pass  # Replace with full code
 
 # Initialize OKX Market API (public data)
-market_api = MarketData.MarketAPI(flag="0")
+public_api = PublicData.PublicAPI(flag="0")      # For get_instruments
+market_api = MarketData.MarketAPI(flag="0")      # For get_candlesticks
 
 TIMEFRAMES = {
     "Weekly": "1W",
@@ -119,17 +121,44 @@ def run_scan():
     
     # Fetch instruments using PublicData if needed, but for simplicity use MarketData if it supports
     # (fallback: keep PublicData for instruments if MarketData doesn't have it)
-    result = market_api.get_instruments(instType="SWAP")  # Test if this works; if not, add separate PublicData import
-    # ... rest of your fetch/filter logic (SWAP + SPOT BTC-quoted) ...
-    # Keep your combined symbols list, processing loop, HTML generation, etc.
-    # Add time.sleep(0.2) in loop for rate limit
-
-    # ... (your existing loop and HTML building) ...
-    if result["code"] != "0":
-        print("Error fetching instruments:", result["msg"])
+    # ── Fetch SWAP (perpetuals) ──
+    swap_result = public_data_api.get_instruments(instType="SWAP")   # ← use public_data_api here    
+    if swap_result["code"] != "0":
+        print("SWAP fetch error:", swap_result["msg"])
         return ""
 
-    all_instruments = result["data"]
+    swap_instruments = swap_result["data"]
+
+    # ── Fetch SPOT ──
+    spot_result = public_data_api.get_instruments(instType="SPOT")
+    if spot_result["code"] != "0":
+        print("SPOT fetch error:", spot_result["msg"])
+        spot_instruments = []  # fallback to empty list if failed
+    else:
+        spot_instruments = spot_result["data"]
+    
+    # ── Now filter both ──
+    symbols = []  # or your existing list name
+    
+    # Filter SWAP (USDT-margined + BTC-margined inverse)
+    for instr in swap_instruments:
+        if instr["state"] != "live":
+            continue
+        inst_id = instr["instId"]
+        settle_ccy = instr.get("settleCcy", "").upper()
+        
+        if "-USDT-SWAP" in inst_id:
+            symbols.append((inst_id, "Perp USDT"))
+        elif "-USD-SWAP" in inst_id and settle_ccy == "BTC":
+            symbols.append((inst_id, "Perp BTC"))
+    
+    # Filter SPOT (only BTC-quoted pairs)
+    for instr in spot_instruments:
+        if instr["state"] == "live" and instr.get("quoteCcy", "").upper() == "BTC":
+            inst_id = instr["instId"]  # e.g., SOL-BTC
+            symbols.append((inst_id, "Spot BTC"))
+    
+    print(f"Total symbols to scan (Perps + BTC-quoted Spot): {len(symbols)}")
 
     # Filter: ONLY USDT-margined (all) + BTC-margined inverse (BTC only)
     perpetual_symbols = []
@@ -170,35 +199,40 @@ def run_scan():
 
     for label, tf in TIMEFRAMES.items():
         rankings = []
-        for symbol in perpetual_symbols:
+        for inst_id, market_type in symbols:   # ← Changed from perpetual_symbols to symbols + unpack tuple
             try:
-                df = get_data(symbol, tf)
+                df = get_data(inst_id, tf)
+                time.sleep(0.2)  # ← Add this to avoid rate limits (very important now with more symbols)
                 if len(df) < 60:
                     continue
                 score = score_asset(df)
+                
+                # Improved display name: shows market type clearly
+                display_symbol = inst_id.replace('-SWAP', f' {market_type}').replace('-BTC', f' {market_type}')
+                
                 rankings.append([
-                    symbol.replace('-SWAP', ' (Perp)'),
+                    display_symbol,
                     score,
                     f"{df['c'].iloc[-1]:.8f}"
                 ])
             except Exception as e:
-                print(f"Error processing {symbol}: {e}")
+                print(f"Error processing {inst_id} ({market_type}): {e}")
                 continue
-
+        
         top10 = sorted(rankings, key=lambda x: -x[1])[:10]
         print(f"\n▶ {label} ({tf.upper()})\n")
         if top10:
             print(tabulate(top10, headers=["Symbol", "Score", "Price"], tablefmt="github"))
         else:
             print("No data\n")
-
+        
         html += f"<h3>{label} Timeframe ({tf.upper()}) - Top 10</h3>"
         if top10:
             df_top = pd.DataFrame(top10, columns=["Symbol", "Score", "Price"])
             html += df_top.to_html(index=False, border=0)
         else:
             html += "<p style='text-align:center;'>No qualifying assets.</p>"
-
+    
     html += """
     <div class="footer">
     <p><strong>Disclaimer:</strong> For informational purposes only. Not financial advice.</p>
@@ -207,7 +241,6 @@ def run_scan():
     </body></html>
     """
     return html
-
 
 if __name__ == "__main__":
     html_body = run_scan()
