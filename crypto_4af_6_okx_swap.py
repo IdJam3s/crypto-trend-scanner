@@ -26,8 +26,33 @@ SENDER_PASSWORD = os.environ['SENDER_PASSWORD']
 RECIPIENT_EMAIL = os.environ.get('RECIPIENT_EMAIL', SENDER_EMAIL)
 
 def send_professional_email(subject, html_body):
-    # Your existing function (unchanged)
-    pass  # Replace with full code
+    print("=== EMAIL ATTEMPT START ===")
+    print(f"Subject: {subject}")
+    print(f"From: {SENDER_EMAIL}")
+    print(f"To: {RECIPIENT_EMAIL}")
+    print(f"HTML length: {len(html_body)}")
+    print(f"SENDER_PASSWORD length: {len(SENDER_PASSWORD) if SENDER_PASSWORD else 'MISSING'}")
+
+    msg = MIMEMultipart("alternative")
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = RECIPIENT_EMAIL
+    msg['Subject'] = subject
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        print("Connecting to smtp.gmail.com:587...")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        print("Starting TLS...")
+        server.starttls()
+        print("Logging in...")
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        print("Sending mail...")
+        server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
+        server.quit()
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"EMAIL FAILED with error: {str(e)}")
+        print(f"Full exception details: {repr(e)}")
 
 # Initialize OKX Market API (public data)
 public_api = PublicData.PublicAPI(flag="0")      # For get_instruments
