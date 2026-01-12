@@ -14,6 +14,8 @@ import time
 
 warnings.filterwarnings("ignore")
 
+print("Script loaded with __name__ =", __name__)
+
 # <--- PLACE THE CLIENTS HERE --->
 public_data_api = PublicData.PublicAPI(flag="0")
 market_data_api = MarketData.MarketAPI(flag="0")
