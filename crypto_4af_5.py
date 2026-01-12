@@ -13,6 +13,8 @@ import os
 
 warnings.filterwarnings("ignore")
 
+print("Script loaded with __name__ =", __name__)
+
 # Email from GitHub secrets (secure)
 SENDER_EMAIL = os.environ['SENDER_EMAIL']
 SENDER_PASSWORD = os.environ['SENDER_PASSWORD']
