@@ -271,6 +271,6 @@ if __name__ == "__main__":
       #  print(timestamped_message)
 
         # Optional: also send an error notification email
-        error_body = f"<p><strong>Error occurred:</strong> {timestamped_message}</p>"
-        send_professional_email("OKX Scanner Error Alert", error_body)
+        #error_body = f"<p><strong>Error occurred:</strong> {timestamped_message}</p>"
+       # send_professional_email("OKX Scanner Error Alert", error_body)
 
