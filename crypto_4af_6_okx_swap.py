@@ -256,23 +256,18 @@ def run_scan():
     return html
 
 if __name__ == "__main__":
-    html_body = run_scan()
-    subject = f"OKX Full-Market 6 Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
-    send_professional_email(subject, html_body)
-
-#if __name__ == "__main__":
- #   try:
-  #      html_body = run_scan()
-   #     if not html_body:
-    #        print("Warning: html_body is empty - no email sent")
-     #   else:
-      #      subject = f"OKX Perps + BTC-Spot Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
-       #     send_professional_email(subject, html_body)
-    #except Exception as e:
-     #   timestamped_message = f"[{datetime.now():%Y-%m-%d %H:%M:%S UTC}] Script failed: {e}"
-      #  print(timestamped_message)
+    try:
+        html_body = run_scan()
+        if not html_body:
+            print("Warning: html_body is empty - no email sent")
+        else:
+            subject = f"OKX Perps + BTC-Spot Long-Trend Report • {datetime.now():%b %d, %Y • %I:%M %p}"
+            send_professional_email(subject, html_body)
+    except Exception as e:
+        timestamped_message = f"[{datetime.now():%Y-%m-%d %H:%M:%S UTC}] Script failed: {e}"
+        print(timestamped_message)
 
         # Optional: also send an error notification email
-        #error_body = f"<p><strong>Error occurred:</strong> {timestamped_message}</p>"
-       # send_professional_email("OKX Scanner Error Alert", error_body)
+        error_body = f"<p><strong>Error occurred:</strong> {timestamped_message}</p>"
+        send_professional_email("OKX Scanner Error Alert", error_body)
 
